@@ -1,5 +1,4 @@
-# Last.fm → Discord 24/7 Rich Presence
-
+# Last.fm Discord RPC 24/7
 > [!WARNING]
 > This project uses a selfbot (user token), which is against [Discord's Terms of Service](https://discord.com/terms). Use at your own risk — your account may be suspended if detected.
 
