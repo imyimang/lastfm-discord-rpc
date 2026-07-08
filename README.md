@@ -81,6 +81,9 @@ docker compose up -d
 # View logs
 docker compose logs -f
 
-# Rebuild after config changes
+# Restart after config.json or .env changes
+docker compose restart
+
+# Rebuild after app.js changes
 docker compose up -d --build
 ```
