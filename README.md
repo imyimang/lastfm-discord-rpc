@@ -72,28 +72,6 @@ npm install
 node app.js
 ```
 
-### PM2
-
-```bash
-# Install PM2 globally if needed
-npm install -g pm2
-
-# Start
-pm2 start ecosystem.config.js
-
-# Save process list (auto-restart on reboot)
-pm2 save
-
-# Enable startup (run the command it outputs)
-pm2 startup
-
-# View logs
-pm2 logs lastfm-sync
-
-# Restart
-pm2 restart lastfm-sync
-```
-
 ### Docker
 
 ```bash
