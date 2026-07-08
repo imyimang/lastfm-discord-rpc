@@ -1,0 +1,14 @@
+{
+  "username": "your_lastfm_username",
+  "shareUsername": false,
+  "clickableLinks": true,
+  "hideWithSpotify": true,
+  "hideWithActivity": false,
+  "statusName": "some music",
+  "statusDisplayType": "artist",
+  "nameFormat": "song-first",
+  "useListeningStatus": true,
+  "missingArt": "lastfmLogo",
+  "showLastFmLogo": true,
+  "showAlbumCover": true
+}

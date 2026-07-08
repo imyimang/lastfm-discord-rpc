@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "debug": "^4.4.3",
+    "discord.js-selfbot-v13": "^3.7.1",
+    "dotenv": "^16.6.1",
+    "node-fetch": "^3.3.2"
+  }
+}
