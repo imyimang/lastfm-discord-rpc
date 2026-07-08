@@ -55,9 +55,9 @@ Edit `config.json` to set your preferences:
 | `clickableLinks` | Make track/artist/album text clickable |
 | `hideWithSpotify` | Hide when Spotify is playing |
 | `hideWithActivity` | Hide when any other activity is present |
-| `statusName` | Custom status text, supports `{artist} {title} {album}` |
+| `statusName` | Custom activity name template (only used when `nameFormat` is `"status-name"`). Supports `{artist}` `{title}` `{album}` |
 | `statusDisplayType` | Member list display: `"off"`, `"artist"`, or `"track"` |
-| `nameFormat` | Activity name: `"status-name"`, `"artist-first"`, `"song-first"`, `"artist"`, `"song"`, or `"album"` |
+| `nameFormat` | Activity name format. `"status-name"` uses `statusName` template; others: `"artist-first"`, `"song-first"`, `"artist"`, `"song"`, `"album"` |
 | `useListeningStatus` | Show "Listening to" (`true`) or "Playing" (`false`) |
 | `missingArt` | Fallback when no album art: `"lastfmLogo"` or `"placeholder"` |
 | `showLastFmLogo` | Show Last.fm logo badge on album art |
