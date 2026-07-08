@@ -16,7 +16,7 @@ The service polls the Last.fm API every 15 seconds for your currently scrobbling
 
 - [Last.fm](https://www.last.fm) account
 - [Last.fm API Key](https://www.last.fm/api/account/create) (free)
-- Discord user token (see [guide](https://gist.github.com/MarvNC/e601f3603df22f36ebd3102c1c0b284a))
+- Discord user token (see [guide](https://www.reddit.com/r/discordapp/comments/1h7isk5/how_could_i_find_my_discord_token_every_guide/))
 - Discord Application (create at [Discord Developer Portal](https://discord.com/developers/applications))
 
 ## Setup
