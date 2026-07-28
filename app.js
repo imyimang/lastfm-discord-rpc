@@ -219,7 +219,7 @@ async function updatePresence() {
 
 function startPolling() {
   updatePresence();
-  intervalTimer = setInterval(updatePresence, 15000);
+  intervalTimer = setInterval(updatePresence, 5000);
 }
 
 function stopPolling() {
