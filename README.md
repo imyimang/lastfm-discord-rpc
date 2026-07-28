@@ -10,7 +10,7 @@ Sync your currently playing music from Last.fm to your Discord profile in real t
 
 ## How It Works
 
-The service polls the Last.fm API every 15 seconds for your currently scrobbling track and updates your Discord presence via a selfbot. It runs on a VPS so it keeps working even when your computer is off — just listen to music on any device and Discord updates automatically.
+The service polls the Last.fm API every 5 seconds for your currently scrobbling track and updates your Discord presence via a selfbot. It runs on a VPS so it keeps working even when your computer is off — just listen to music on any device and Discord updates automatically.
 
 ## Prerequisites
 
