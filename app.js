@@ -182,7 +182,7 @@ async function updatePresence() {
     if (settings.clickableLinks) {
       const encArtist = encodeURIComponent(artist.replace(/&/g, 'and'));
       const encSong = encodeURIComponent(song.replace(/&/g, 'and'));
-      activity.details_url = `https://www.last.fm/music/${encArtist}/${encSong}`;
+      activity.details_url = `https://www.last.fm/music/${encArtist}/_/${encSong}`;
       activity.state_url = `https://www.last.fm/music/${encArtist}`;
     }
 
