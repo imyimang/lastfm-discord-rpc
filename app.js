@@ -49,6 +49,8 @@ let intervalTimer = null;
 let cachedAssets = new Map();
 let cachedSmallImage = null;
 let externalActivities = [];
+const durationCache = new Map();
+const trackStartTimes = new Map();
 
 const LASTFM_LOGO = 'https://www.last.fm/static/images/lastfm_avatar_twitter.png';
 
@@ -111,6 +113,30 @@ async function getCurrentTrack() {
   return null;
 }
 
+function cacheSet(map, key, value, limit = 200) {
+  map.set(key, value);
+  if (map.size > limit) map.delete(map.keys().next().value);
+}
+
+async function getTrackDuration(track, key) {
+  if (durationCache.has(key)) return durationCache.get(key);
+  try {
+    const artist = track.artist['#text'] || '';
+    const url = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${apiKey}&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track.name)}&format=json`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const ms = parseInt(data?.track?.duration, 10);
+    if (Number.isFinite(ms) && ms > 0) {
+      cacheSet(durationCache, key, ms);
+      return ms;
+    }
+  } catch (e) {
+    console.error(`[Last.fm] Duration lookup failed: ${e.message}`);
+  }
+  return null;
+}
+
 async function resolveImage(imageUrl) {
   if (!imageUrl) return null;
   const cached = cachedAssets.get(imageUrl);
@@ -166,6 +192,18 @@ async function updatePresence() {
 
     console.log(`[Playing] ${artist} - ${song}${album ? ` (${album})` : ''}`);
 
+    let start = trackStartTimes.get(key);
+    if (!start) {
+      start = Date.now();
+      cacheSet(trackStartTimes, key, start);
+    }
+    const duration = settings.showProgressBar !== false
+      ? await getTrackDuration(track, key)
+      : null;
+
+    const timestamps = { start };
+    if (duration) timestamps.end = start + duration;
+
     const activity = {
       applicationId: discordClientId,
       name: formatName(artist, song, album),
@@ -173,7 +211,7 @@ async function updatePresence() {
       state: artist,
       type: settings.useListeningStatus ? 'LISTENING' : 'PLAYING',
       flags: ActivityFlags.FLAGS.INSTANCE,
-      timestamps: { start: Date.now() },
+      timestamps,
     };
 
     const sdt = statusDisplayTypeValue();

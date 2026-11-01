@@ -44,7 +44,8 @@ Edit `config.json` to set your preferences:
   "useListeningStatus": true,
   "missingArt": "lastfmLogo",
   "showLastFmLogo": true,
-  "showAlbumCover": true
+  "showAlbumCover": true,
+  "showProgressBar": true
 }
 ```
 
@@ -62,6 +63,7 @@ Edit `config.json` to set your preferences:
 | `missingArt` | Fallback when no album art: `"lastfmLogo"` or `"placeholder"` |
 | `showLastFmLogo` | Show Last.fm logo badge on album art |
 | `showAlbumCover` | Show album cover art |
+| `showProgressBar` | Show a progress bar using the track duration from Last.fm (approximate — starts when the track is first detected) |
 
 ## Deployment
 

@@ -10,5 +10,6 @@
   "useListeningStatus": true,
   "missingArt": "lastfmLogo",
   "showLastFmLogo": true,
-  "showAlbumCover": true
+  "showAlbumCover": true,
+  "showProgressBar": true
 }
