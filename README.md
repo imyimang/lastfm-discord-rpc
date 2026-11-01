@@ -6,7 +6,7 @@ Sync your currently playing music from Last.fm to your Discord profile in real t
 
 > Modified from [Vencord LastFMRichPresence](https://vencord.dev/plugins/LastFMRichPresence).
 
-![alt text](image.png)
+![alt text](image.jpg)
 
 ## How It Works
 
