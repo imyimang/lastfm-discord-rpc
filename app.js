@@ -120,21 +120,24 @@ function cacheSet(map, key, value, limit = 200) {
 
 async function getTrackDuration(track, key) {
   if (durationCache.has(key)) return durationCache.get(key);
+  let duration = null;
+  const artist = track.artist['#text'] || '';
   try {
-    const artist = track.artist['#text'] || '';
     const url = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${apiKey}&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track.name)}&format=json`;
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const ms = parseInt(data?.track?.duration, 10);
-    if (Number.isFinite(ms) && ms > 0) {
-      cacheSet(durationCache, key, ms);
-      return ms;
+    if (Number.isFinite(ms) && ms >= 30000 && ms <= 3600000) {
+      duration = ms;
+    } else {
+      console.log(`[Last.fm] Ignoring suspicious duration "${data?.track?.duration}" for ${artist} - ${track.name}`);
     }
   } catch (e) {
     console.error(`[Last.fm] Duration lookup failed: ${e.message}`);
   }
-  return null;
+  cacheSet(durationCache, key, duration);
+  return duration;
 }
 
 async function resolveImage(imageUrl) {
@@ -179,9 +182,7 @@ async function updatePresence() {
 
     const key = buildTrackKey(track);
     const activityKey = buildActivityKey(track);
-    if (key === lastTrackKey && activityKey === lastActivityKey) return;
-    lastTrackKey = key;
-    lastActivityKey = activityKey;
+    const isSameTrack = key === lastTrackKey && activityKey === lastActivityKey;
 
     const artist = track.artist['#text'] || 'Unknown Artist';
     const song = track.name;
@@ -190,19 +191,36 @@ async function updatePresence() {
       ? (track.image?.[3]?.['#text'] || track.image?.[2]?.['#text'] || '')
       : '';
 
-    console.log(`[Playing] ${artist} - ${song}${album ? ` (${album})` : ''}`);
+    if (!isSameTrack) {
+      console.log(`[Playing] ${artist} - ${song}${album ? ` (${album})` : ''}`);
+    }
 
     let start = trackStartTimes.get(key);
-    if (!start) {
-      start = Date.now();
-      cacheSet(trackStartTimes, key, start);
-    }
     const duration = settings.showProgressBar !== false
       ? await getTrackDuration(track, key)
       : null;
 
+    // A changed track key always means a new play: reset the bar to 0. For the
+    // same track, only reset once the estimated end has passed (e.g. looped
+    // playback) so Discord keeps animating the bar by itself.
+    let shouldUpdate = !isSameTrack;
+    if (!isSameTrack || !start) {
+      start = Date.now();
+      cacheSet(trackStartTimes, key, start);
+    } else if (duration && start + duration <= Date.now()) {
+      start = Date.now();
+      cacheSet(trackStartTimes, key, start);
+      shouldUpdate = true;
+      console.log(`[Progress] ${artist} - ${song} ended, restarting progress bar from 0`);
+    }
+
+    if (!shouldUpdate) return;
+
     const timestamps = { start };
-    if (duration) timestamps.end = start + duration;
+    if (duration) {
+      timestamps.end = start + duration;
+      console.log(`[Progress] duration=${Math.round(duration / 1000)}s start=${new Date(start).toISOString()} end=${new Date(timestamps.end).toISOString()}`);
+    }
 
     const activity = {
       applicationId: discordClientId,
@@ -250,6 +268,8 @@ async function updatePresence() {
     }
 
     await client.user.setPresence({ activities: [activity], status: 'online' });
+    lastTrackKey = key;
+    lastActivityKey = activityKey;
   } catch (e) {
     console.error('[Presence] Update failed:', e.message);
   }
