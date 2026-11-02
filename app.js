@@ -52,7 +52,6 @@ let cachedAssets = new Map();
 let cachedSmallImage = null;
 let externalActivities = [];
 const durationCache = new Map();
-const trackStartTimes = new Map();
 
 const DURATION_CACHE_FILE = path.join(__dirname, 'data', 'duration-cache.json');
 const NEGATIVE_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -117,11 +116,6 @@ async function getCurrentTrack() {
     console.error(`[Last.fm] ${e.message}`);
   }
   return null;
-}
-
-function cacheSet(map, key, value, limit = 200) {
-  map.set(key, value);
-  if (map.size > limit) map.delete(map.keys().next().value);
 }
 
 function loadDurationCache() {
@@ -375,7 +369,7 @@ async function updatePresence() {
 
     const key = buildTrackKey(track);
     const activityKey = buildActivityKey(track);
-    const isSameTrack = key === lastTrackKey && activityKey === lastActivityKey;
+    if (key === lastTrackKey && activityKey === lastActivityKey) return;
 
     const artist = track.artist['#text'] || 'Unknown Artist';
     const song = track.name;
@@ -384,31 +378,13 @@ async function updatePresence() {
       ? (track.image?.[3]?.['#text'] || track.image?.[2]?.['#text'] || '')
       : '';
 
-    if (!isSameTrack) {
-      console.log(`[Playing] ${artist} - ${song}${album ? ` (${album})` : ''}`);
-    }
+    console.log(`[Playing] ${artist} - ${song}${album ? ` (${album})` : ''}`);
 
-    let start = trackStartTimes.get(key);
     const duration = settings.showProgressBar !== false
       ? await getTrackDuration(track, key)
       : null;
 
-    // A changed track key always means a new play: reset the bar to 0. For the
-    // same track, only reset once the estimated end has passed (e.g. looped
-    // playback) so Discord keeps animating the bar by itself.
-    let shouldUpdate = !isSameTrack;
-    if (!isSameTrack || !start) {
-      start = Date.now();
-      cacheSet(trackStartTimes, key, start);
-    } else if (duration && start + duration <= Date.now()) {
-      start = Date.now();
-      cacheSet(trackStartTimes, key, start);
-      shouldUpdate = true;
-      console.log(`[Progress] ${artist} - ${song} ended, restarting progress bar from 0`);
-    }
-
-    if (!shouldUpdate) return;
-
+    const start = Date.now();
     const timestamps = { start };
     if (duration) {
       timestamps.end = start + duration;
