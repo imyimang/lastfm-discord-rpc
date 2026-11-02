@@ -9,3 +9,4 @@ services:
       - .env
     volumes:
       - ./config.json:/app/config.json
+      - ./data:/app/data

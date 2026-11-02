@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
 const { Client, RichPresence, Activity, ActivityFlags, RichPresenceAssets } = require('discord.js-selfbot-v13');
 const fetch = require('node-fetch').default;
 const settings = require('./config.json');
@@ -51,6 +53,10 @@ let cachedSmallImage = null;
 let externalActivities = [];
 const durationCache = new Map();
 const trackStartTimes = new Map();
+
+const DURATION_CACHE_FILE = path.join(__dirname, 'data', 'duration-cache.json');
+const NEGATIVE_CACHE_TTL = 24 * 60 * 60 * 1000;
+const MUSICBRAINZ_USER_AGENT = 'lastfm-discord-rpc/1.0';
 
 const LASTFM_LOGO = 'https://www.last.fm/static/images/lastfm_avatar_twitter.png';
 
@@ -118,27 +124,214 @@ function cacheSet(map, key, value, limit = 200) {
   if (map.size > limit) map.delete(map.keys().next().value);
 }
 
-async function getTrackDuration(track, key) {
-  if (durationCache.has(key)) return durationCache.get(key);
-  let duration = null;
-  const artist = track.artist['#text'] || '';
+function loadDurationCache() {
   try {
-    const url = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${apiKey}&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track.name)}&format=json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const ms = parseInt(data?.track?.duration, 10);
-    if (Number.isFinite(ms) && ms >= 30000 && ms <= 3600000) {
-      duration = ms;
-    } else {
-      console.log(`[Last.fm] Ignoring suspicious duration "${data?.track?.duration}" for ${artist} - ${track.name}`);
+    const raw = JSON.parse(fs.readFileSync(DURATION_CACHE_FILE, 'utf8'));
+    for (const [key, entry] of Object.entries(raw)) {
+      if (entry && typeof entry.t === 'number' && (typeof entry.d === 'number' || entry.d === null)) {
+        durationCache.set(key, entry);
+      }
     }
+    console.log(`[Cache] Loaded ${durationCache.size} duration entries`);
   } catch (e) {
-    console.error(`[Last.fm] Duration lookup failed: ${e.message}`);
+    if (e.code !== 'ENOENT') console.error('[Cache] Load failed:', e.message);
   }
-  cacheSet(durationCache, key, duration);
-  return duration;
 }
+
+function saveDurationCache() {
+  try {
+    fs.mkdirSync(path.dirname(DURATION_CACHE_FILE), { recursive: true });
+    const tmp = `${DURATION_CACHE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(durationCache)));
+    fs.renameSync(tmp, DURATION_CACHE_FILE);
+  } catch (e) {
+    console.error('[Cache] Save failed:', e.message);
+  }
+}
+
+function getCachedDuration(key) {
+  const entry = durationCache.get(key);
+  if (!entry) return undefined;
+  if (entry.d === null && Date.now() - entry.t > NEGATIVE_CACHE_TTL) {
+    durationCache.delete(key);
+    return undefined;
+  }
+  return entry.d;
+}
+
+function setCachedDuration(key, duration) {
+  durationCache.set(key, { d: duration ?? null, t: Date.now() });
+  if (durationCache.size > 2000) durationCache.delete(durationCache.keys().next().value);
+  saveDurationCache();
+}
+
+function isValidDuration(ms) {
+  return Number.isFinite(ms) && ms >= 30000 && ms <= 3600000;
+}
+
+function normalizeText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\(\[][^)\]]*(feat|ft)\.?[^)\]]*[\)\]]/gi, ' ')
+    .replace(/\s+(feat|ft)\.?\s+.*$/i, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function hasVersionTag(value) {
+  return /\b(live|remix|remaster(ed)?|karaoke|instrumental|acoustic|cover|edit|demo)\b/i.test(value || '');
+}
+
+function looksLikeLive(candidate) {
+  if (candidate.live) return true;
+  if (hasVersionTag(candidate.title)) return true;
+  return /live|演唱會|演唱会|ライブ|ライヴ/i.test(candidate.album || '');
+}
+
+function scoreCandidate(candidate, target) {
+  const title = normalizeText(candidate.title);
+  const targetTitle = normalizeText(target.title);
+  if (!title || !targetTitle) return -Infinity;
+
+  const artist = normalizeText(candidate.artist);
+  const targetArtist = normalizeText(target.artist);
+  if (targetArtist && artist && !(artist === targetArtist || artist.includes(targetArtist) || targetArtist.includes(artist))) {
+    return -Infinity;
+  }
+
+  const album = normalizeText(candidate.album);
+  const targetAlbum = normalizeText(target.album);
+  const albumMatch = Boolean(targetAlbum && album && album === targetAlbum);
+
+  let score = 0;
+  if (title === targetTitle) score += 5;
+  else if (title.includes(targetTitle) || targetTitle.includes(title)) score += 3;
+  else if (!albumMatch) return -Infinity;
+
+  if (targetArtist && artist) score += artist === targetArtist ? 3 : 2;
+  if (albumMatch) score += 2;
+  if (looksLikeLive(candidate) && !hasVersionTag(target.title) && !/live|演唱會|演唱会|ライブ|ライヴ/i.test(target.album || '')) {
+    score -= 10;
+  }
+
+  return score;
+}
+
+function pickBestDuration(candidates, target) {
+  let best = null;
+  let bestScore = 0;
+  for (const candidate of candidates) {
+    if (!isValidDuration(candidate.duration)) continue;
+    const score = scoreCandidate(candidate, target);
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best?.duration ?? null;
+}
+
+async function fetchLastfmDuration(track) {
+  const artist = track.artist['#text'] || '';
+  const url = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${apiKey}&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track.name)}&format=json`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const ms = parseInt(data?.track?.duration, 10);
+  if (isValidDuration(ms)) return ms;
+  if (data?.track?.duration) console.log(`[Last.fm] Suspicious duration "${data.track.duration}" for ${artist} - ${track.name}`);
+  return null;
+}
+
+async function fetchItunesDuration(track) {
+  const artist = track.artist['#text'] || '';
+  const term = [artist, track.name].filter(Boolean).join(' ');
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=25`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const candidates = (data.results || []).map(r => ({
+    title: r.trackName,
+    artist: r.artistName,
+    album: r.collectionName,
+    duration: r.trackTimeMillis,
+  }));
+  return pickBestDuration(candidates, {
+    title: track.name,
+    artist,
+    album: track.album['#text'] || '',
+  });
+}
+
+let musicbrainzLastRequest = 0;
+
+async function throttleMusicbrainz() {
+  const wait = 1100 - (Date.now() - musicbrainzLastRequest);
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  musicbrainzLastRequest = Date.now();
+}
+
+function escapeLucene(value) {
+  return String(value ?? '').replace(/[\\"]/g, '\\$&');
+}
+
+async function fetchMusicbrainzDuration(track) {
+  await throttleMusicbrainz();
+  const artist = track.artist['#text'] || '';
+  const query = `artist:"${escapeLucene(artist)}" AND recording:"${escapeLucene(track.name)}"`;
+  const url = `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(query)}&fmt=json&limit=25`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': MUSICBRAINZ_USER_AGENT },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const candidates = (data.recordings || []).map(r => ({
+    title: r.title,
+    artist: (r['artist-credit'] || []).map(a => a.name).join(''),
+    album: r.releases?.[0]?.title || '',
+    duration: r.length,
+    live: (r.releases || []).some(rel =>
+      (rel['release-group']?.['secondary-types'] || []).some(type => /live/i.test(type))),
+  }));
+  return pickBestDuration(candidates, {
+    title: track.name,
+    artist,
+    album: track.album['#text'] || '',
+  });
+}
+
+const DURATION_PROVIDERS = [
+  ['lastfm', fetchLastfmDuration],
+  ['itunes', fetchItunesDuration],
+  ['musicbrainz', fetchMusicbrainzDuration],
+];
+
+async function getTrackDuration(track, key) {
+  const cached = getCachedDuration(key);
+  if (cached !== undefined) return cached;
+
+  const artist = track.artist['#text'] || '';
+  for (const [name, resolver] of DURATION_PROVIDERS) {
+    try {
+      const duration = await resolver(track);
+      if (duration) {
+        console.log(`[Duration] ${artist} - ${track.name} -> ${Math.round(duration / 1000)}s (${name})`);
+        setCachedDuration(key, duration);
+        return duration;
+      }
+    } catch (e) {
+      console.error(`[Duration] ${name} failed: ${e.message}`);
+    }
+  }
+
+  console.log(`[Duration] ${artist} - ${track.name} -> no length found, progress bar disabled for this track`);
+  setCachedDuration(key, null);
+  return null;
+}
+
+loadDurationCache();
 
 async function resolveImage(imageUrl) {
   if (!imageUrl) return null;

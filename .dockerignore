@@ -6,3 +6,5 @@ node_modules/
 npm-debug.log*
 README.md
 image.png
+image.jpg
+data/

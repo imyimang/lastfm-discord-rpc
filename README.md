@@ -12,6 +12,8 @@ Sync your currently playing music from Last.fm to your Discord profile in real t
 
 The service polls the Last.fm API every 5 seconds for your currently scrobbling track and updates your Discord presence via a selfbot. It runs on a VPS so it keeps working even when your computer is off — just listen to music on any device and Discord updates automatically.
 
+Track lengths for the progress bar come from Last.fm first, then fall back to the free iTunes Search API and MusicBrainz when Last.fm has no usable duration. Resolved durations are cached in `data/duration-cache.json` (mounted as a volume in Docker) so they survive restarts.
+
 ## Prerequisites
 
 - [Last.fm](https://www.last.fm) account
